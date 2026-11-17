@@ -1,0 +1,35 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+hide stereotype
+skinparam dpi 160
+title Вариант 2. Temporal
+System_Ext(bank, "Банковские сервисы", "Операции и outbox")
+System_Ext(app, "Приложение банка", "Настройки и push ACK")
+System_Boundary(np, "Notification Platform: критичный контур") {
+  Container(api, "Notification API", "Go, REST/JSON", "Приём и callback")
+  ContainerDb(db, "Admission / Attempt Store", "PostgreSQL", "Ключи, попытки, inbox/outbox, проекция")
+  Container(relay, "Workflow Relay", "Go, Temporal SDK", "Запуск и сигналы")
+  Container(temporal, "Temporal Service", "Temporal Server", "История, таймеры, task queues")
+  ContainerDb(history, "History Store", "PostgreSQL", "История workflow")
+  Container(workers, "Workflow / Activity Workers", "Go, Temporal SDK", "Маршрут и внешние вызовы")
+}
+System_Ext(profile, "Профиль клиента", "Контакты и push-токены")
+System_Ext(provider, "Провайдеры", "FCM/APNs, SMS, email")
+Rel(bank, api, "Событие", "HTTPS")
+Rel(app, api, "Настройки, ACK", "HTTPS")
+Rel(api, db, "Запись", "SQL")
+Rel(relay, db, "Чтение outbox", "SQL")
+Rel(relay, temporal, "Start / Signal", "gRPC")
+Rel(temporal, history, "События", "SQL")
+Rel(workers, temporal, "Задания, результат", "gRPC")
+Rel(workers, db, "Попытки, проекция", "SQL")
+Rel(workers, profile, "Контакт", "gRPC/mTLS")
+Rel(workers, provider, "Отправка", "HTTPS")
+Rel(provider, api, "Receipt", "HTTPS")
+Rel(provider, app, "Push", "FCM/APNs")
+legend right
+|<#438DD5>    | <color:#333333>Приложение или хранилище</color> |
+|<#999999>    | <color:#333333>Внешняя система</color> |
+endlegend
+@enduml

@@ -1,0 +1,32 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 15
+skinparam dpi 160
+hide footbox
+autonumber
+title Вариант 1. Успешная доставка через push
+participant "API /\nRelay" as API
+database "PostgreSQL" as DB
+queue "Kafka" as K
+participant "Delivery\nWorkers" as W
+participant "Push API" as P
+participant "Приложение" as App
+API -> DB : TX: уведомление\nи outbox, UNIQUE
+DB --> API : COMMIT\nответ 202
+API -> K : Publish\n(notification_id)
+K --> API : acks=all
+API -> DB : Отметить outbox
+K -> W : Команда доставки
+W -> DB : TX: inbox + попытка\nпроверка политики
+DB --> W : attempt_id, version
+W -> K : Commit offset
+W -> DB : CAS: DISPATCHING\nпроверить receipt\nзаписать deadline
+W -> P : Send\n(attempt_id)
+P --> W : Accepted\n(message_id)
+W -> DB : SUBMITTED
+P -> App : Push + ID
+App -> API : ACK приложения
+API -> DB : TX: DELIVERED\nи отмена READY
+DB --> API : COMMIT
+API --> App : 200
+@enduml

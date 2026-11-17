@@ -1,0 +1,42 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 15
+skinparam dpi 160
+hide footbox
+autonumber
+title Вариант 1. Переход с push на SMS
+participant "Delivery\nWorkers" as W
+database "PostgreSQL" as DB
+participant "Push API" as P
+participant "SMS API" as S
+participant "Приложение" as App
+participant "Callback\nAPI" as API
+W -> DB : Сохранить push attempt_id\nи deadline
+W -> P : Send(push_attempt_id)
+P --> W : Timeout через 2 с
+W -> DB : UNKNOWN
+W -> P : Проверить статус,\nесли API поддерживает
+P --> W : Результат неизвестен
+W -> DB : Таймер 5 с: TX + CAS\nнет receipt\nсоздать SMS READY
+alt push ACK пришёл до начала SMS
+  App -> API : Push ACK
+  API -> DB : DELIVERED\nотменить SMS READY
+  W -> DB : Проверить перед отправкой
+  DB --> W : Уже доставлено, пропустить
+else подтверждения пока нет
+  W -> DB : CAS SMS\nREADY -> DISPATCHING
+  W -> S : Send\n(SMS attempt_id)
+  S --> W : Accepted\n(message_id)
+  W -> DB : SUBMITTED
+  S -> API : Подписанный\nreceipt delivered
+  API -> DB : TX: receipt + DELIVERED
+  DB --> API : COMMIT
+  API --> S : 200
+  App -> API : Возможный поздний push ACK
+  API -> DB : Дополнить аудит,\nновые попытки не создавать
+end
+note over S,App
+Уже начатая SMS может прийти
+вместе с поздним push.
+end note
+@enduml

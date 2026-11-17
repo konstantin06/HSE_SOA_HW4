@@ -1,0 +1,33 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+hide stereotype
+skinparam dpi 160
+title Вариант 1. Kafka + PostgreSQL
+System_Ext(bank, "Банковские сервисы", "Операции и outbox")
+System_Ext(app, "Приложение банка", "Настройки и push ACK")
+System_Boundary(np, "Notification Platform: критичный контур") {
+  Container(api, "Notification API", "Go, REST/JSON", "Приём и результаты")
+  ContainerDb(db, "Delivery Store", "PostgreSQL", "Состояние, попытки, таймеры, inbox/outbox")
+  Container(relay, "Outbox Relay", "Go", "Публикация событий")
+  ContainerQueue(kafka, "Event Bus", "Apache Kafka", "Команды и результаты")
+  Container(workers, "Delivery Workers", "Go", "Маршрут и адаптеры")
+}
+System_Ext(profile, "Профиль клиента", "Контакты и push-токены")
+System_Ext(provider, "Провайдеры", "FCM/APNs, SMS, email")
+Rel(bank, api, "Событие", "HTTPS")
+Rel(app, api, "Настройки, ACK", "HTTPS")
+Rel(api, db, "Запись", "SQL")
+Rel(relay, db, "Чтение outbox", "SQL")
+Rel(relay, kafka, "Публикация", "Kafka")
+Rel(kafka, workers, "Команда", "Kafka")
+Rel(workers, db, "Попытки, CAS", "SQL")
+Rel(workers, profile, "Контакт", "gRPC/mTLS")
+Rel(workers, provider, "Отправка", "HTTPS")
+Rel(provider, api, "Receipt", "HTTPS")
+Rel(provider, app, "Push", "FCM/APNs")
+legend right
+|<#438DD5>    | <color:#333333>Приложение или хранилище</color> |
+|<#999999>    | <color:#333333>Внешняя система</color> |
+endlegend
+@enduml

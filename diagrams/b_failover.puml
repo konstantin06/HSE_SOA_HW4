@@ -1,0 +1,50 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 15
+skinparam dpi 160
+hide footbox
+autonumber
+title Вариант 2. Переход с push на SMS
+participant "Temporal" as T
+participant "Workflow /\nActivity Worker" as W
+database "Attempt\nStore" as DB
+participant "Push API" as P
+participant "SMS API" as S
+participant "Callback API /\nRelay" as API
+T -> W : SendPush Activity
+W -> DB : Сохранить attempt_id\nи deadline
+W -> P : Send(push_attempt_id)
+P --> W : Timeout через 2 с
+W -> DB : UNKNOWN
+W -> T : Activity result\nи deadline
+T -> W : Workflow task
+W -> T : Durable timer\nдо deadline
+T -> W : Таймер сработал\n5 с от начала push
+W -> T : Schedule Activity\nSendSMS
+T -> W : SendSMS Activity
+W -> DB : Проверить receipt\nсоздать попытку SMS
+alt ранний push ACK уже сохранён
+  DB --> W : Есть подтверждение
+  W -> T : AlreadyDelivered
+else подтверждения пока нет
+  DB --> W : Отправка разрешена
+  W -> S : Send\n(SMS attempt_id)
+  S --> W : Accepted\n(message_id)
+  W -> DB : SUBMITTED
+  W -> T : Activity result
+  S -> API : Подписанный\nreceipt delivered
+  API -> DB : TX: inbox\nи signal_outbox
+  DB --> API : COMMIT
+  API --> S : 200
+  API -> T : Signal DeliveryReceipt(event_id)
+  T -> W : Workflow task с receipt
+  W -> T : DELIVERED\nотмена timer\nPersistResult
+  T -> W : PersistResult Activity
+  W -> DB : Итоговая проекция
+  W -> T : Activity result\nзавершить workflow
+end
+note over W,S
+При повторе Activity сохраняется attempt_id.
+Результат внешнего RPC может оставаться UNKNOWN.
+end note
+@enduml

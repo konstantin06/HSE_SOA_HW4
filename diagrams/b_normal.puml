@@ -1,0 +1,40 @@
+@startuml
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 15
+skinparam dpi 160
+hide footbox
+autonumber
+title Вариант 2. Успешная доставка через push
+participant "API /\nRelay" as API
+database "Admission /\nAttempt Store" as DB
+participant "Temporal" as T
+participant "Workflow /\nActivity Worker" as W
+participant "Push API" as P
+participant "Приложение" as App
+API -> DB : TX: уведомление\nи start_outbox, UNIQUE
+DB --> API : COMMIT\nответ 202
+API -> T : StartWorkflow\n(notification_id)\nUSE_EXISTING / REJECT_DUPLICATE
+T --> API : История запуска сохранена
+API -> DB : Закрыть start_outbox
+T -> W : Workflow task
+W -> T : Schedule Activity\nSendPush
+T -> W : SendPush Activity
+W -> DB : Записать attempt_id\nи deadline\nпроверить receipt
+W -> P : Send\n(attempt_id)
+P --> W : Accepted\n(message_id)
+W -> DB : SUBMITTED
+W -> T : Activity result\nи deadline
+T -> W : Workflow task
+W -> T : Durable timer\nдо deadline
+P -> App : Push + ID
+App -> API : ACK приложения
+API -> DB : TX: inbox\nи signal_outbox
+DB --> API : COMMIT
+API --> App : 200
+API -> T : Signal DeliveryReceipt(event_id)
+T -> W : Workflow task с receipt
+W -> T : DELIVERED\nотмена timer\nPersistResult
+T -> W : PersistResult Activity
+W -> DB : Итоговая проекция
+W -> T : Activity result\nзавершить workflow
+@enduml
